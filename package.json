@@ -1,0 +1,14 @@
+{
+  "name": "degoog-web-loader",
+  "description": "Open WebUI external web loader plugin for degoog.",
+  "author": "m.porskamp",
+  "plugins": [
+    {
+      "path": "plugins/degoog-web-loader",
+      "name": "Degoog Web Loader",
+      "description": "Exposes an HTTP endpoint that Open WebUI can use as an external web loader. Uses ctx.fetch() which routes through the degoog transport layer (4play browser, curl, etc.).",
+      "version": "1.0.0",
+      "type": "route"
+    }
+  ]
+}
