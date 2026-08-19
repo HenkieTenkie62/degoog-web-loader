@@ -2,65 +2,72 @@
  * degoog-web-loader - Degoog plugin
  *
  * Exposes an HTTP endpoint that Open WebUI can use as an external web loader.
- * Fetches pages through degoog's transport layer (4play, curl, etc.) or
- * falls back to plain HTTP fetch.
+ * Fetches pages through a configurable degoog transport (4play, curl, etc.)
+ * or falls back to plain HTTP fetch.
+ *
+ * The plugin appears in the Plugins section with a transport setting.
+ * The fetch endpoint is at: POST /api/plugin/<id>/fetch
  *
  * Install: copy this folder to data/plugins/degoog-web-loader/
- *
- * Request:  POST /api/plugin/degoog-web-loader/fetch
- * Body:     { "urls": ["https://example.com"], "transport": "4play" }
- * Response: [{ "page_content": "...", "metadata": { "source": "...", "title": "...", "description": "..." } }]
  */
 
-let _outgoingFetch = null;
-let _outgoingFetchTried = false;
+let _fetch = null;
+let _transport = "";
 
 /**
- * Try to load degoog's outgoingFetch so we can route requests
- * through any installed transport (4play, curl, flaresolverr, etc.).
- * The plugin lives in data/plugins/<name>/ and degoog's source is in src/.
+ * BangCommand export — makes the plugin appear in the Plugins section
+ * with a settings UI. The commands registry calls initPlugin() which
+ * invokes init(ctx) and configure(settings).
  */
-async function getOutgoingFetch() {
-  if (_outgoingFetchTried) return _outgoingFetch;
-  _outgoingFetchTried = true;
+const command = {
+  name: "Degoog Web Loader",
+  trigger: "webloader",
+  description:
+    "Open WebUI external web loader. Configure the transport used for fetching pages.",
+  isClientExposed: false,
 
-  const candidates = [
-    "../../../src/server/utils/outgoing.ts",
-    "../../src/server/utils/outgoing.ts",
-    "../src/server/utils/outgoing.ts",
-  ];
+  settingsSchema: [
+    {
+      key: "transport",
+      label: "Fetch transport",
+      type: "text",
+      description:
+        "Transport ID to use for fetching pages (e.g. 'curl', 'degoog-org-official-extensions-lolcat-4play-transport'). " +
+        "Leave empty for default fetch. See the Transports section for available IDs.",
+      placeholder: "degoog-org-official-extensions-lolcat-4play-transport",
+    },
+  ],
 
-  for (const rel of candidates) {
+  init(ctx) {
+    _fetch = ctx.fetch;
+  },
+
+  configure(settings) {
+    _transport = (settings.transport || "").trim();
+  },
+
+  isConfigured() {
+    return true;
+  },
+
+  async execute() {
+    return "Degoog Web Loader is active. Transport: " + (_transport || "default");
+  },
+};
+
+/**
+ * Fetch a URL using the configured transport.
+ */
+async function fetchUrl(url) {
+  if (_transport && _fetch) {
     try {
-      const mod = await import(new URL(rel, import.meta.url));
-      if (typeof mod.outgoingFetch === "function") {
-        _outgoingFetch = mod.outgoingFetch;
-        return _outgoingFetch;
-      }
-    } catch {
-      /* try next path */
-    }
-  }
-  return null;
-}
-
-/**
- * Fetch a URL. If a transport name is given and degoog's outgoingFetch
- * is available, route through that transport. Otherwise use global fetch.
- */
-async function fetchUrl(url, transport) {
-  if (transport) {
-    const of = await getOutgoingFetch();
-    if (of) {
-      try {
-        const res = await of(url, { redirect: "follow" }, transport);
-        if (res.ok) return await res.text();
-        throw new Error("HTTP " + res.status);
-      } catch (e) {
-        console.warn(
-          "[degoog-web-loader] transport '" + transport + "' failed, falling back to fetch: " + e.message,
-        );
-      }
+      const res = await _fetch(url, { redirect: "follow" }, _transport);
+      if (res.ok) return await res.text();
+      throw new Error("HTTP " + res.status);
+    } catch (e) {
+      console.warn(
+        "[degoog-web-loader] transport '" + _transport + "' failed, falling back to fetch: " + e.message,
+      );
     }
   }
 
@@ -69,57 +76,74 @@ async function fetchUrl(url, transport) {
   return await res.text();
 }
 
-export default {
-  routes: [
-    {
-      method: "post",
-      path: "/fetch",
-      handler: async (req) => {
-        let body;
+export default command;
+
+export const routes = [
+  {
+    method: "post",
+    path: "/fetch",
+    handler: async (req) => {
+      let body;
+      try {
+        body = await req.json();
+      } catch {
+        return json({ error: "Invalid JSON" }, 400);
+      }
+
+      const urls = Array.isArray(body.urls) ? body.urls : [];
+      if (urls.length === 0) return json({ error: "No URLs provided" }, 400);
+
+      // Transport priority: request body > plugin setting > default fetch.
+      // Open WebUI only sends { urls }, so the plugin setting is the primary
+      // way to pin a transport. The body.transport field is an override.
+      let transport = _transport;
+      if (typeof body.transport === "string" && body.transport.trim()) {
+        transport = body.transport.trim();
+      }
+
+      const results = [];
+      for (const url of urls) {
         try {
-          body = await req.json();
-        } catch {
-          return json({ error: "Invalid JSON" }, 400);
+          const html = await fetchUrlWithTransport(url, transport);
+          if (!html) continue;
+          results.push({
+            page_content: extractText(html),
+            metadata: {
+              source: url,
+              title: extractTitle(html),
+              description: extractDescription(html),
+            },
+          });
+        } catch (err) {
+          console.warn("[degoog-web-loader] " + url + ": " + err.message);
         }
+      }
 
-        const urls = Array.isArray(body.urls) ? body.urls : [];
-        if (urls.length === 0) return json({ error: "No URLs provided" }, 400);
-
-        // Transport priority: request body > URL query param > default fetch.
-        // Open WebUI only sends { urls }, so the query param is how you
-        // pin a transport: .../fetch?transport=<transport-id>
-        let transport = typeof body.transport === "string" ? body.transport.trim() : "";
-        if (!transport) {
-          try {
-            transport = new URL(req.url).searchParams.get("transport") || "";
-          } catch {
-            /* ignore malformed URL */
-          }
-        }
-
-        const results = [];
-        for (const url of urls) {
-          try {
-            const html = await fetchUrl(url, transport);
-            if (!html) continue;
-            results.push({
-              page_content: extractText(html),
-              metadata: {
-                source: url,
-                title: extractTitle(html),
-                description: extractDescription(html),
-              },
-            });
-          } catch (err) {
-            console.warn("[degoog-web-loader] " + url + ": " + err.message);
-          }
-        }
-
-        return json(results, 200);
-      },
+      return json(results, 200);
     },
-  ],
-};
+  },
+];
+
+/**
+ * Fetch a URL with a specific transport override.
+ */
+async function fetchUrlWithTransport(url, transport) {
+  if (transport && _fetch) {
+    try {
+      const res = await _fetch(url, { redirect: "follow" }, transport);
+      if (res.ok) return await res.text();
+      throw new Error("HTTP " + res.status);
+    } catch (e) {
+      console.warn(
+        "[degoog-web-loader] transport '" + transport + "' failed, falling back to fetch: " + e.message,
+      );
+    }
+  }
+
+  const res = await fetch(url, { redirect: "follow" });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  return await res.text();
+}
 
 function json(data, status) {
   return new Response(JSON.stringify(data), {
