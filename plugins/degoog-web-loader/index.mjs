@@ -85,7 +85,17 @@ export default {
         const urls = Array.isArray(body.urls) ? body.urls : [];
         if (urls.length === 0) return json({ error: "No URLs provided" }, 400);
 
-        const transport = typeof body.transport === "string" ? body.transport.trim() : "";
+        // Transport priority: request body > URL query param > default fetch.
+        // Open WebUI only sends { urls }, so the query param is how you
+        // pin a transport: .../fetch?transport=<transport-id>
+        let transport = typeof body.transport === "string" ? body.transport.trim() : "";
+        if (!transport) {
+          try {
+            transport = new URL(req.url).searchParams.get("transport") || "";
+          } catch {
+            /* ignore malformed URL */
+          }
+        }
 
         const results = [];
         for (const url of urls) {
