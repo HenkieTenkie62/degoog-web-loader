@@ -48,8 +48,11 @@ In Open WebUI, set the following environment variables (or via Admin Panel → S
 
 ```
 WEB_LOADER_ENGINE=external
-EXTERNAL_WEB_LOADER_URL=http://<degoog-host>:4444/api/plugin/degoog-web-loader/fetch
+EXTERNAL_WEB_LOADER_URL=http://<degoog-host>:4444/api/plugin/henkietenkie62-degoog-web-loader-degoog-web-loader/fetch
 ```
+
+> **Note:** The plugin ID in the URL is the `installedAs` value from the degoog store.
+> Check it via `GET /api/store/installed` on your degoog instance.
 
 No API key is needed — the endpoint is only accessible from the local network.
 
@@ -93,12 +96,15 @@ transport. Common options:
 
 | Transport | Description |
 |-----------|-------------|
-| `4play` | Real Firefox browser via the lolcat 4play extension |
+| `degoog-org-official-extensions-lolcat-4play-transport` | Real Firefox browser via the lolcat 4play extension |
 | `curl` | System curl |
-| `flaresolverr` | Cloudflare bypass via FlareSolverr |
-| `browserless` | Headless browser via Browserless |
-| `cloakbrowser` | Stealth Chromium via CloakBrowser |
-| `camoufox` | Stealth Firefox via Camoufox |
+| `curl-impersonate` | curl with browser impersonation |
+| `degoog-org-official-extensions-flaresolverr-transport` | Cloudflare bypass via FlareSolverr |
+| `degoog-org-official-extensions-cloakbrowser-transport` | Stealth Chromium via CloakBrowser |
+
+> **Note:** Transport names are the `id` values from `GET /api/extensions` on your
+> degoog instance. The list above reflects the official-extensions repo. Any
+> installed transport can be used.
 
 Any transport installed in degoog can be used — the list is not hardcoded.
 
