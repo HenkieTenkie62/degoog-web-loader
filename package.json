@@ -1,7 +1,7 @@
 {
   "name": "degoog-web-loader",
   "description": "Open WebUI external web loader plugin for degoog.",
-  "author": "m.porskamp",
+  "author": "HenkieTenkie62",
   "plugins": [
     {
       "path": "plugins/degoog-web-loader",
