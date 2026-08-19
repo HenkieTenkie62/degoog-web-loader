@@ -6,8 +6,8 @@
     {
       "path": "plugins/degoog-web-loader",
       "name": "Degoog Web Loader",
-      "description": "Exposes an HTTP endpoint that Open WebUI can use as an external web loader. Uses ctx.fetch() which routes through the degoog transport layer (4play browser, curl, etc.).",
-      "version": "1.0.0",
+      "description": "Exposes an HTTP endpoint that Open WebUI can use as an external web loader. Fetches pages through any installed degoog transport (4play, curl, flaresolverr, etc.) or plain HTTP fetch. Transport is selected per request.",
+      "version": "1.1.0",
       "type": "route"
     }
   ]

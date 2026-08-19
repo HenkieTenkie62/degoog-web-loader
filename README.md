@@ -2,7 +2,7 @@
 
 Open WebUI external web loader plugin for [degoog](https://github.com/degoog-org/degoog).
 
-This plugin exposes an HTTP endpoint that Open WebUI can use as an external web loader. It uses `ctx.fetch()` which routes through the degoog transport layer — so you can pick any transport (4play browser, curl, etc.) for fetching pages.
+This plugin exposes an HTTP endpoint that Open WebUI can use as an external web loader. It fetches pages through degoog's transport layer (4play browser, curl, flaresolverr, etc.) or falls back to plain HTTP fetch.
 
 ## Architecture
 
@@ -12,7 +12,7 @@ This plugin exposes an HTTP endpoint that Open WebUI can use as an external web 
 
 [degoog container :4444]
   ├── degoog HTTP API (SearXNG shape) → Open WebUI web search
-  ├── transports (4play browser, curl, ...)
+  ├── transports (4play browser, curl, flaresolverr, ...)
   └── degoog-web-loader plugin → POST /api/plugin/<id>/fetch
 
 [Open WebUI]
@@ -42,40 +42,30 @@ Copy the `plugins/degoog-web-loader/` folder to the degoog plugins directory:
 cp -r plugins/degoog-web-loader/ /path/to/degoog/data/plugins/degoog-web-loader/
 ```
 
-### 2. Configure the plugin
-
-In degoog, go to **Settings → Plugins → Degoog Web Loader** and set:
-
-- **API Key**: Generate a strong random key (e.g. `openssl rand -hex 32`)
-- **Transport**: Which degoog transport to use for fetching pages
-  - `default` — degoog's default `ctx.fetch`
-  - `4play` — real Firefox browser via the 4play transport
-  - `curl` — shell out to system `curl`
-  - `auto` — try `ctx.fetch` first, fall back to `curl`
-
-### 3. Configure Open WebUI
+### 2. Configure Open WebUI
 
 In Open WebUI, set the following environment variables (or via Admin Panel → Settings → Web Search):
 
 ```
 WEB_LOADER_ENGINE=external
-EXTERNAL_WEB_LOADER_URL=http://<degoog-host>:4444/api/plugin/<plugin-id>/fetch
-EXTERNAL_WEB_LOADER_API_KEY=<your-api-key>
+EXTERNAL_WEB_LOADER_URL=http://<degoog-host>:4444/api/plugin/degoog-web-loader/fetch
 ```
 
-Replace `<plugin-id>` with the actual plugin folder ID (e.g. `degoog-web-loader`).
+No API key is needed — the endpoint is only accessible from the local network.
 
 ## How it works
 
 1. Open WebUI sends a POST request to the plugin's `/fetch` endpoint with:
    ```json
    {
-     "urls": ["https://example.com", "https://foo.org"]
+     "urls": ["https://example.com", "https://foo.org"],
+     "transport": "4play"
    }
    ```
-   and header `Authorization: Bearer <api-key>`
 
-2. The plugin fetches each URL through the selected transport
+2. The `transport` field is optional. When provided, the plugin routes the request
+   through that degoog transport (e.g. `4play`, `curl`, `flaresolverr`). When omitted
+   or the transport is unavailable, it falls back to plain HTTP fetch.
 
 3. For each URL:
    - The transport fetches the page (real browser session for 4play, plain HTTP for curl)
@@ -96,11 +86,28 @@ Replace `<plugin-id>` with the actual plugin folder ID (e.g. `degoog-web-loader`
    ]
    ```
 
+## Available transports
+
+The transport name is passed in the request body and must match an installed degoog
+transport. Common options:
+
+| Transport | Description |
+|-----------|-------------|
+| `4play` | Real Firefox browser via the lolcat 4play extension |
+| `curl` | System curl |
+| `flaresolverr` | Cloudflare bypass via FlareSolverr |
+| `browserless` | Headless browser via Browserless |
+| `cloakbrowser` | Stealth Chromium via CloakBrowser |
+| `camoufox` | Stealth Firefox via Camoufox |
+
+Any transport installed in degoog can be used — the list is not hardcoded.
+
 ## Why this approach?
 
 - **No extra Firefox profile needed** — uses the same browser/extension as degoog
 - **No separate server needed** — runs as a plugin inside degoog
-- **Transport selectable** — switch between 4play (browser), curl, or auto without code changes
+- **Transport selectable per request** — switch between 4play, curl, etc. without code changes
+- **No hardcoded transport list** — any installed degoog transport works
 - **Undetectable** — the 4play transport uses real Firefox extension APIs, no webdriver signals
 - **Simple** — one plugin file, no external services
 
